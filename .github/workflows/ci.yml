@@ -9,9 +9,6 @@ on:
 jobs:
   frontend:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: .
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -34,4 +31,4 @@ jobs:
           cache: npm
           cache-dependency-path: server/package.json
       - run: npm install
-      - run: npx prisma validate
+      - run: npm run check
