@@ -21,13 +21,13 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: server
-    env:
-      DATABASE_URL: postgresql://ci:ci@localhost:5432/loancompare_ci
+        working-directory: server-go
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-go@v5
         with:
-          node-version: 22
-      - run: npm install
-      - run: npm run check
+          go-version: '1.24'
+          cache: false
+      - run: go mod tidy
+      - run: go test ./...
+      - run: go build ./...
