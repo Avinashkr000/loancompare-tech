@@ -1,0 +1,1 @@
+Quick start: copy `server/.env.example`, set JWT_SECRET, then run `docker compose up --build`. Visit `http://localhost:8080`. Demo admin: admin@loancompare.local / Admin@12345 for local development only.
