@@ -18,14 +18,12 @@ services:
 
   api:
     build:
-      context: ./server
+      context: ./server-go
     restart: unless-stopped
     environment:
-      NODE_ENV: production
       PORT: 4000
-      DATABASE_URL: postgresql://loancompare:loancompare@db:5432/loancompare?schema=public
+      DATABASE_URL: postgres://loancompare:loancompare@db:5432/loancompare?sslmode=disable
       JWT_SECRET: ${JWT_SECRET:-replace-this-secret}
-      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-2h}
       CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:8080}
     depends_on:
       db:
