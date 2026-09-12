@@ -1,123 +1,63 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { BrowserRouter, Link, NavLink, Navigate, Outlet, Route, Routes, useNavigate, useParams } from 'react-router-dom'
+import { auth, loans } from './lib/api.js'
 
-const lenders = [
-  { name: 'HDFC Bank', code: 'H', rate: 10.75, fee: 1.5, note: 'Fast approval', tone: 'blue' },
-  { name: 'ICICI Bank', code: 'I', rate: 11.1, fee: 1.25, note: 'Low processing fee', tone: 'violet' },
-  { name: 'Axis Bank', code: 'A', rate: 11.35, fee: 1, note: 'Flexible tenure', tone: 'amber' },
-  { name: 'Kotak Mahindra', code: 'K', rate: 11.6, fee: 0.75, note: 'Quick disbursal', tone: 'green' },
-]
+const money = (n) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(Number(n || 0))
+const purposeMap = { 'Personal loan': 'PERSONAL', 'Home renovation': 'HOME_RENOVATION', Education: 'EDUCATION', 'Medical expense': 'MEDICAL', 'Debt consolidation': 'DEBT_CONSOLIDATION' }
 
-const fmt = (value, compact = false) => new Intl.NumberFormat('en-IN', {
-  style: 'currency', currency: 'INR', maximumFractionDigits: compact ? 1 : 0,
-}).format(value)
-
-const emi = (principal, annualRate, months) => {
-  const r = annualRate / 1200
-  if (!r) return principal / months
-  const p = (1 + r) ** months
-  return principal * r * p / (p - 1)
+function useAuth() {
+  const [user, setUser] = useState(() => JSON.parse(localStorage.getItem('loancompare_user') || 'null'))
+  return { user, setUser }
 }
 
-function App() {
-  const [amount, setAmount] = useState(900000)
-  const [tenure, setTenure] = useState(48)
-  const [score, setScore] = useState(770)
-  const [purpose, setPurpose] = useState('Personal loan')
-  const [view, setView] = useState('compare')
-  const [activeOffer, setActiveOffer] = useState(0)
-  const [faq, setFaq] = useState(-1)
+function RequireAuth() {
+  return localStorage.getItem('loancompare_token') ? <Outlet /> : <Navigate to="/login" replace />
+}
 
-  const offers = useMemo(() => {
-    const scoreAdj = score >= 780 ? -0.3 : score >= 740 ? 0 : score >= 680 ? 0.65 : 1.25
-    return lenders.map((lender, index) => {
-      const rate = Math.max(8.5, lender.rate + scoreAdj)
-      const monthly = emi(amount, rate, tenure)
-      const interest = monthly * tenure - amount
-      const fee = amount * lender.fee / 100
-      return { ...lender, index, rate, monthly, interest, fee, total: interest + fee }
-    }).sort((a, b) => a.total - b.total)
-  }, [amount, tenure, score])
+function AppShell() {
+  const { user } = useAuth()
+  return <div className="product-shell"><header className="app-nav"><Link className="logo" to="/"><span className="logo-core">LC</span><span>LOAN<span>COMPARE</span></span></Link><nav><NavLink to="/compare">Compare</NavLink>{user && <NavLink to="/dashboard">Dashboard</NavLink>}<NavLink to="/how-it-works">How it works</NavLink></nav><div className="nav-actions">{user ? <Link className="mini-user" to="/dashboard">{user.fullName?.split(' ').map(x => x[0]).join('').slice(0,2)}</Link> : <><Link to="/login">Sign in</Link><Link className="nav-button" to="/register">Get started ↗</Link></>}</div></header><Outlet /></div>
+}
 
+function HomePage() {
+  const [amount, setAmount] = useState(900000); const [tenure, setTenure] = useState(48); const [score, setScore] = useState(770)
+  const [data, setData] = useState(null)
+  const fallback = [{ lender: { name: 'HDFC Bank' }, annualRate: 10.45, emi: 23113, totalInterest: 209424 }, { lender: { name: 'ICICI Bank' }, annualRate: 10.8, emi: 23260, totalInterest: 216480 }]
+  useEffect(() => { loans.compare({ amount, tenureMonths: tenure, creditScore: score }).then(setData).catch(() => setData(null)) }, [amount, tenure, score])
+  const offers = data?.offers?.slice(0, 3) || fallback
   const best = offers[0]
-  const savings = offers.at(-1).total - best.total
-  const scoreState = score >= 780 ? 'Excellent' : score >= 740 ? 'Strong' : score >= 700 ? 'Good' : 'Needs work'
-  const scoreProgress = Math.min(100, Math.max(12, ((score - 600) / 250) * 100))
-
-  return (
-    <div className="command-app">
-      <div className="noise" />
-      <div className="glow glow-left" />
-      <div className="glow glow-right" />
-
-      <header className="nav">
-        <a className="logo" href="#top"><span className="logo-core">LC</span><span>LOAN<span>COMPARE</span></span></a>
-        <div className="nav-center"><a className="active" href="#compare">Compare</a><a href="#why">Why us</a><a href="#process">How it works</a></div>
-        <div className="nav-right"><span className="live-status"><i /> LIVE ENGINE</span><button onClick={() => document.getElementById('compare')?.scrollIntoView({ behavior: 'smooth' })}>Start <b>↗</b></button></div>
-      </header>
-
-      <main id="top">
-        <section className="hero">
-          <div className="hero-left">
-            <div className="hero-kicker"><span>01</span><i /> CREDIT INTELLIGENCE</div>
-            <h1>Borrow with <span>precision.</span></h1>
-            <p className="hero-lede">One clean view of EMI, rates and real borrowing cost. Shape your scenario and watch the market respond.</p>
-            <div className="hero-actions"><button className="hero-primary" onClick={() => document.getElementById('compare')?.scrollIntoView({ behavior: 'smooth' })}>Build my comparison <span>↓</span></button><span className="hero-note">No credit enquiry <b>·</b> No spam</span></div>
-            <div className="hero-stats"><div><strong>₹{Math.round(savings / 1000)}K</strong><span>possible savings</span></div><div><strong>{offers.length}</strong><span>lenders modelled</span></div><div><strong>{best.rate.toFixed(2)}%</strong><span>best rate</span></div></div>
-          </div>
-
-          <div className="hero-orbit" aria-label="3D loan intelligence visual">
-            <div className="orbit-rings"><span /><span /><span /><span /></div>
-            <div className="orbital orbital-one">RATE <b>{best.rate.toFixed(2)}%</b></div>
-            <div className="orbital orbital-two">SAVING <b>{fmt(savings, true)}</b></div>
-            <div className="orbital orbital-three">SCORE <b>{score}</b></div>
-            <div className="core-visual">
-              <div className="core-face"><span>YOUR</span><strong>{fmt(best.monthly)}</strong><small>MONTHLY EMI</small><em>↓ {best.rate.toFixed(2)}% rate</em></div>
-              <div className="core-edge" /><div className="core-glow" />
-            </div>
-            <div className="floating-token token-a">₹</div><div className="floating-token token-b">%</div><div className="floating-token token-c">↗</div>
-          </div>
-        </section>
-
-        <div className="ticker"><span>REAL-TIME SCENARIO</span><b>•</b><span>EMI</span><b>•</b><span>INTEREST</span><b>•</b><span>FEES</span><b>•</b><span>TOTAL COST</span><b>•</b><span>ELIGIBILITY READY</span></div>
-
-        <section className="workspace" id="compare">
-          <div className="workspace-head"><div><div className="section-index">02 / DECISION DESK</div><h2>Build the deal you <span>want.</span></h2></div><div className="segmented"><button className={view === 'compare' ? 'sel' : ''} onClick={() => setView('compare')}>Compare</button><button className={view === 'insights' ? 'sel' : ''} onClick={() => setView('insights')}>Insights</button></div></div>
-
-          {view === 'compare' ? (
-            <div className="desk-grid">
-              <aside className="scenario-card">
-                <div className="scenario-top"><div><span>YOUR SCENARIO</span><h3>Borrowing profile</h3></div><div className="score-badge">{scoreState.toUpperCase()}</div></div>
-                <div className="control"><div className="control-row"><label>Loan amount</label><strong>{fmt(amount)}</strong></div><input type="range" min="100000" max="2500000" step="25000" value={amount} onChange={(e) => setAmount(Number(e.target.value))} /><div className="scale"><span>₹1L</span><span>₹25L</span></div></div>
-                <div className="control"><div className="control-row"><label>Tenure</label><strong>{tenure} mo</strong></div><input type="range" min="12" max="84" step="6" value={tenure} onChange={(e) => setTenure(Number(e.target.value))} /><div className="scale"><span>12</span><span>84 months</span></div></div>
-                <div className="control"><div className="control-row"><label>Credit score</label><strong>{score}</strong></div><input type="range" min="600" max="850" step="5" value={score} onChange={(e) => setScore(Number(e.target.value))} /><div className="scale"><span>600</span><span>850</span></div></div>
-                <label className="purpose"><span>Loan purpose</span><select value={purpose} onChange={(e) => setPurpose(e.target.value)}><option>Personal loan</option><option>Home renovation</option><option>Education</option><option>Medical expense</option><option>Debt consolidation</option></select></label>
-                <div className="score-meter"><div className="meter-head"><span>Profile strength</span><strong>{Math.round(scoreProgress)}%</strong></div><div className="meter"><i style={{ width: `${scoreProgress}%` }} /></div><p>{scoreState} profile can unlock more competitive pricing.</p></div>
-                <button className="reset" onClick={() => { setAmount(900000); setTenure(48); setScore(770); setPurpose('Personal loan') }}>Reset scenario ↺</button>
-              </aside>
-
-              <section className="results-card">
-                <div className="results-head"><div><span>MARKET MATCH</span><h3>{offers.length} offers ranked for you</h3></div><div className="saving-pill"><small>BEST vs WORST</small><strong>{fmt(savings)}</strong></div></div>
-                <div className="winner-card"><div className="winner-mark">{best.code}</div><div className="winner-copy"><small>01 / BEST MATCH</small><h4>{best.name}</h4><p>{best.note} · lowest estimated total cost</p></div><div className="winner-number"><span>MONTHLY EMI</span><strong>{fmt(best.monthly)}</strong><em>{best.rate.toFixed(2)}% p.a.</em></div></div>
-                <div className="offer-table-head"><span>LENDER</span><span>RATE</span><span>EMI</span><span>FEE</span><span>TOTAL COST</span><span /></div>
-                <div className="offer-table">{offers.map((offer, index) => <button className={`offer-line ${activeOffer === index ? 'focused' : ''}`} key={offer.name} onClick={() => setActiveOffer(index)}><span className={`lender-dot ${offer.tone}`}>{offer.code}</span><span className="lender-title"><strong>{offer.name}</strong><small>{offer.note}</small></span><strong>{offer.rate.toFixed(2)}%</strong><strong>{fmt(offer.monthly)}</strong><strong>{fmt(offer.fee)}</strong><strong>{fmt(offer.total)}</strong><span className="chevron">→</span></button>)}</div>
-                <div className="results-foot"><span><i /> Data is illustrative</span><span>Production → lender API + bureau + eligibility</span></div>
-              </section>
-            </div>
-          ) : (
-            <div className="insights-panel"><div className="insight-big"><span>YOUR TOTAL BORROWING COST</span><strong>{fmt(best.total + amount)}</strong><p>principal + interest + processing fee</p></div><div className="insight-grid"><article><span>Monthly commitment</span><strong>{fmt(best.monthly)}</strong><small>{tenure} payments</small></article><article><span>Total interest</span><strong>{fmt(best.interest)}</strong><small>{((best.interest / amount) * 100).toFixed(1)}% of principal</small></article><article><span>Processing fee</span><strong>{fmt(best.fee)}</strong><small>{best.fee / amount * 100}% of principal</small></article><article><span>Compared to highest</span><strong>{fmt(savings)}</strong><small>potential saving</small></article></div></div>
-          )}
-        </section>
-
-        <section className="story" id="why"><div className="story-copy"><div className="section-index">03 / WHY LOANCOMPARE</div><h2>Stop optimizing the <span>EMI.</span><br />Optimize the decision.</h2><p>Cheap EMI can hide a long tenure. Low rate can hide fees. A good comparison needs all three dimensions at once.</p></div><div className="story-visual"><div className="stack-card card-back"><span>84 MONTHS</span><strong>₹28,940</strong><small>smaller EMI</small></div><div className="stack-card card-mid"><span>10.75% RATE</span><strong>₹32,180</strong><small>lower interest</small></div><div className="stack-card card-front"><span>BEST VALUE</span><strong>₹31,420</strong><small>balanced total cost</small><i>✓</i></div><div className="story-caption">The best offer is rarely<br />just the smallest EMI.</div></div></section>
-
-        <section className="process" id="process"><div className="process-head"><div className="section-index">04 / THE FLOW</div><h2>From “how much?” to <span>“which one?”</span></h2></div><div className="process-line"><article><b>01</b><div className="process-icon">◎</div><h3>Shape it</h3><p>Amount, tenure, score and purpose create your scenario.</p></article><i /><article><b>02</b><div className="process-icon">≋</div><h3>Read it</h3><p>Every offer exposes the cost beneath the headline rate.</p></article><i /><article><b>03</b><div className="process-icon">↗</div><h3>Move</h3><p>Shortlist now, connect eligibility and applications next.</p></article></div></section>
-
-        <section className="faq" id="faq"><div><div className="section-index">05 / FAQ</div><h2>Questions before<br /><span>the next click.</span></h2></div><div className="faq-list">{[['Are lender rates final?', 'No. This frontend uses illustrative pricing. Production pricing should come from connected lender APIs.'],['Does this pull my credit report?', 'No. This MVP does not make bureau calls or hard enquiries.'],['What should we build next?', 'Eligibility engine, lender integrations, consent, authentication, application tracking and analytics.']].map(([q, a], i) => <button key={q} className={faq === i ? 'open' : ''} onClick={() => setFaq(faq === i ? -1 : i)}><span>0{i + 1}</span><div><strong>{q}</strong>{faq === i && <p>{a}</p>}</div><b>{faq === i ? '−' : '+'}</b></button>)}</div></section>
-      </main>
-
-      <footer><a className="logo" href="#top"><span className="logo-core">LC</span><span>LOAN<span>COMPARE</span></span></a><span>Compare smarter. Borrow clearer.</span><span>Prototype / 2026</span></footer>
-    </div>
-  )
+  return <main className="public-page"><section className="product-hero"><div className="hero-copy"><div className="hero-kicker"><span>01</span><i /> LOAN INTELLIGENCE</div><h1>See the real cost.<br /><span>Choose with confidence.</span></h1><p>LoanCompare turns rates, EMI, fees and eligibility into one decision surface—then carries the application forward.</p><div className="hero-buttons"><Link className="primary-button" to="/compare">Build my comparison ↓</Link><Link className="text-button" to="/how-it-works">See how it works →</Link></div><div className="hero-proof"><b>4</b><span>lenders in the current prototype<br />real-time comparison engine ready for APIs</span></div></div><div className="hero-visual"><div className="hero-orb"><div className="hero-ring ring1"/><div className="hero-ring ring2"/><div className="hero-core"><small>BEST MATCH</small><strong>{money(best?.emi || 23113)}</strong><span>/ month</span><em>{Number(best?.annualRate || 10.45).toFixed(2)}% rate</em></div><span className="hero-chip chip-one">₹{Math.round((best?.totalInterest || 209424)/1000)}K interest</span><span className="hero-chip chip-two">{score} credit</span><span className="hero-chip chip-three">{tenure} months</span></div></div></section><section className="scenario-strip"><div><span>Loan amount</span><strong>{money(amount)}</strong><input type="range" min="100000" max="2500000" step="25000" value={amount} onChange={e => setAmount(Number(e.target.value))}/></div><div><span>Tenure</span><strong>{tenure} months</strong><input type="range" min="12" max="84" step="6" value={tenure} onChange={e => setTenure(Number(e.target.value))}/></div><div><span>Credit score</span><strong>{score}</strong><input type="range" min="600" max="850" step="5" value={score} onChange={e => setScore(Number(e.target.value))}/></div></section><section className="preview-grid"><div><span className="section-index">02 / LIVE ENGINE</span><h2>Offers that move when<br /><span>your scenario moves.</span></h2><p>Every number below comes from the backend calculation engine. When lender APIs are connected, this same surface becomes live marketplace data.</p><Link className="primary-button" to="/compare">Open full comparison →</Link></div><div className="preview-card"><div className="preview-head"><div><span>BEST CURRENT MATCH</span><h3>{best?.lender?.name}</h3></div><strong>{Number(best?.annualRate || 10.45).toFixed(2)}%</strong></div>{offers.map((offer, i) => <div className="mini-offer" key={offer.lender?.name || i}><span>{i + 1}</span><b>{offer.lender?.name}</b><strong>{Number(offer.annualRate || 0).toFixed(2)}%</strong><em>{money(offer.emi)}</em></div>)}</div></section><section className="home-cards"><article><span>APPLICATIONS</span><h3>From comparison to submission</h3><p>Create a real application, store lender offers and select the one you want.</p></article><article><span>SECURITY</span><h3>Auth + audit trail</h3><p>JWT protected APIs, password hashing, roles and audit events are wired in.</p></article><article><span>OPERATIONS</span><h3>Admin-ready</h3><p>Lenders, applicants, applications and metrics are exposed through a role-based API.</p></article></section></main>
 }
 
-export default App
+function ComparePage() {
+  const [amount, setAmount] = useState(900000); const [tenure, setTenure] = useState(48); const [score, setScore] = useState(770); const [purpose, setPurpose] = useState('Personal loan'); const [offers, setOffers] = useState([]); const [loading, setLoading] = useState(false); const [error, setError] = useState('')
+  const run = async () => { setLoading(true); setError(''); try { const data = await loans.compare({ amount, tenureMonths: tenure, creditScore: score, purpose }); setOffers(data.offers || []) } catch (e) { setError(e.message) } finally { setLoading(false) } }
+  useEffect(() => { run() }, [])
+  return <main className="page"><div className="page-head"><div><span className="section-index">COMPARE / DECISION DESK</span><h1>Find your best offer.</h1><p>Change a scenario, rerun the engine and compare the full economics—not just the headline rate.</p></div><Link className="text-button" to="/dashboard">My applications →</Link></div><div className="compare-layout"><aside className="side-panel"><h3>Your scenario</h3><label>Loan amount<strong>{money(amount)}</strong><input type="range" min="50000" max="2500000" step="25000" value={amount} onChange={e => setAmount(Number(e.target.value))}/></label><label>Tenure<strong>{tenure} months</strong><input type="range" min="6" max="84" step="6" value={tenure} onChange={e => setTenure(Number(e.target.value))}/></label><label>Credit score<strong>{score}</strong><input type="range" min="300" max="900" step="5" value={score} onChange={e => setScore(Number(e.target.value))}/></label><label>Purpose<select value={purpose} onChange={e => setPurpose(e.target.value)}><option>Personal loan</option><option>Home renovation</option><option>Education</option><option>Medical expense</option><option>Debt consolidation</option></select></label><button className="primary-button wide" onClick={run}>{loading ? 'Recalculating…' : 'Recalculate offers'}</button>{error && <p className="error-text">{error}</p>}</aside><section className="results-area"><div className="result-summary"><div><span>Matched lenders</span><strong>{offers.length}</strong></div><div><span>Best rate</span><strong>{offers[0] ? `${Number(offers[0].annualRate).toFixed(2)}%` : '—'}</strong></div><div><span>Best EMI</span><strong>{offers[0] ? money(offers[0].emi) : '—'}</strong></div></div><div className="offer-grid">{offers.map((offer, i) => <article className={i === 0 ? 'offer-card best' : 'offer-card'} key={offer.lender.id}><div className="offer-title"><span>{i === 0 ? 'BEST MATCH' : `0${i + 1}`}</span><h3>{offer.lender.name}</h3><small>{offer.lender.slug}</small></div><div className="offer-stats"><div><span>Annual rate</span><strong>{Number(offer.annualRate).toFixed(2)}%</strong></div><div><span>EMI</span><strong>{money(offer.emi)}</strong></div><div><span>Interest</span><strong>{money(offer.totalInterest)}</strong></div><div><span>Fee</span><strong>{money(offer.processingFee)}</strong></div></div><div className="offer-bottom"><strong>Total {money(offer.totalPayable)}</strong><button onClick={async () => { if (!localStorage.getItem('loancompare_token')) return window.location.assign('/login?returnTo=/compare'); try { const created = await loans.create({ amount, tenureMonths: tenure, creditScore: score, purpose: purposeMap[purpose] || 'PERSONAL' }); await loans.selectOffer(created.application.id, created.application.offers?.[0]?.id || offer.id); window.location.assign(`/dashboard/applications/${created.application.id}`) } catch (e) { setError(e.message) } }}>Select offer →</button></div></article>)}</div></section></div></main>
+}
+
+function AuthPage({ mode }) {
+  const navigate = useNavigate(); const [form, setForm] = useState({ email: '', password: '', fullName: '' }); const [error, setError] = useState(''); const [busy, setBusy] = useState(false)
+  const submit = async (e) => { e.preventDefault(); setBusy(true); setError(''); try { const data = mode === 'login' ? await auth.login(form) : await auth.register(form); localStorage.setItem('loancompare_token', data.token); localStorage.setItem('loancompare_user', JSON.stringify(data.user)); navigate('/dashboard') } catch (err) { setError(err.message) } finally { setBusy(false) } }
+  return <main className="auth-page"><div className="auth-visual"><span className="section-index">LOANCOMPARE / ACCESS</span><h1>One account for<br /><span>every decision.</span></h1><p>Save scenarios, track applications and carry your selected lender offer into the next stage.</p></div><form className="auth-card" onSubmit={submit}><span className="section-index">{mode === 'login' ? 'WELCOME BACK' : 'CREATE ACCOUNT'}</span><h2>{mode === 'login' ? 'Sign in' : 'Create your account'}</h2>{mode === 'register' && <input placeholder="Full name" value={form.fullName} onChange={e => setForm({ ...form, fullName: e.target.value })} required/>}<input type="email" placeholder="Email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} required/><input type="password" placeholder="Password (8+ chars)" value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} minLength="8" required/>{error && <p className="error-text">{error}</p>}<button className="primary-button wide" disabled={busy}>{busy ? 'Working…' : mode === 'login' ? 'Enter workspace' : 'Create account'}</button><p className="switch-copy">{mode === 'login' ? <>New here? <Link to="/register">Create account</Link></> : <>Already have an account? <Link to="/login">Sign in</Link></>}</p></form></main>
+}
+
+function DashboardLayout() {
+  const user = JSON.parse(localStorage.getItem('loancompare_user') || '{}'); const navigate = useNavigate()
+  const logout = () => { localStorage.removeItem('loancompare_token'); localStorage.removeItem('loancompare_user'); navigate('/login') }
+  return <main className="dashboard"><aside className="dashboard-nav"><Link className="logo" to="/"><span className="logo-core">LC</span><span>LOAN<span>COMPARE</span></span></Link><nav><NavLink end to="/dashboard">Overview</NavLink><NavLink to="/dashboard/applications">Applications</NavLink><NavLink to="/dashboard/profile">Profile</NavLink>{user.role === 'ADMIN' && <NavLink to="/dashboard/admin">Admin</NavLink>}</nav><button onClick={logout}>Sign out</button></aside><section className="dashboard-content"><div className="mobile-dash-head"><span>GOOD TO SEE YOU,</span><strong>{user.fullName}</strong></div><Outlet /></section></main>
+}
+
+function DashboardHome() { const [apps, setApps] = useState([]); useEffect(() => { loans.applications().then(r => setApps(r.applications || [])).catch(() => {}) }, []); const selected = apps.filter(a => a.status === 'OFFER_SELECTED').length; return <><div className="dashboard-head"><div><span className="section-index">WORKSPACE</span><h1>Decision dashboard</h1><p>Your saved applications and next steps.</p></div><Link className="primary-button" to="/compare">New comparison ↗</Link></div><div className="dashboard-metrics"><article><span>Applications</span><strong>{apps.length}</strong></article><article><span>Offer selected</span><strong>{selected}</strong></article><article><span>In progress</span><strong>{apps.filter(a => ['SUBMITTED', 'ELIGIBILITY_CHECK', 'KYC_PENDING'].includes(a.status)).length}</strong></article></div><section className="dash-card"><div className="dash-card-head"><div><span>RECENT APPLICATIONS</span><h2>Keep moving.</h2></div><Link to="/dashboard/applications">View all →</Link></div>{apps.slice(0, 5).map(a => <Link className="app-row" key={a.id} to={`/dashboard/applications/${a.id}`}><div><strong>{money(a.amount)}</strong><span>{a.purpose.replaceAll('_', ' ')}</span></div><span>{a.status.replaceAll('_', ' ')}</span><b>→</b></Link>)}{!apps.length && <div className="empty-state">No applications yet. Start with a comparison.</div>}</section></> }
+
+function ApplicationsPage() { const [apps, setApps] = useState([]); useEffect(() => { loans.applications().then(r => setApps(r.applications || [])) }, []); return <><div className="dashboard-head"><div><span className="section-index">WORKSPACE / APPLICATIONS</span><h1>Your applications</h1><p>Every comparison you submitted lives here.</p></div><Link className="primary-button" to="/compare">Create new ↗</Link></div><section className="dash-card">{apps.map(a => <Link className="app-row" key={a.id} to={`/dashboard/applications/${a.id}`}><div><strong>{money(a.amount)}</strong><span>{a.purpose.replaceAll('_', ' ')} · {a.tenureMonths} months</span></div><span className={`status ${a.status.toLowerCase()}`}>{a.status.replaceAll('_', ' ')}</span><b>→</b></Link>)}{!apps.length && <div className="empty-state">No saved applications yet.</div>}</section></> }
+
+function ApplicationDetail() { const { id } = useParams(); const [data, setData] = useState(null); const [error, setError] = useState(''); useEffect(() => { loans.application(id).then(r => setData(r.application)).catch(e => setError(e.message)) }, [id]); if (error) return <div className="empty-state">{error}</div>; if (!data) return <div className="empty-state">Loading application…</div>; return <><div className="dashboard-head"><div><span className="section-index">APPLICATION / {data.id.slice(-8).toUpperCase()}</span><h1>{money(data.amount)} application</h1><p>{data.purpose.replaceAll('_', ' ')} · {data.tenureMonths} months · status {data.status.replaceAll('_', ' ')}</p></div><Link className="text-button" to="/dashboard/applications">← Applications</Link></div><div className="application-detail"><div className="timeline"><span className="done">Submitted</span><span className={data.status !== 'SUBMITTED' ? 'done' : ''}>Eligibility</span><span className={['OFFER_SELECTED','KYC_PENDING','APPROVED','DISBURSED'].includes(data.status) ? 'done' : ''}>Offer</span><span className={['APPROVED','DISBURSED'].includes(data.status) ? 'done' : ''}>Disbursal</span></div><section className="dash-card"><div className="dash-card-head"><div><span>OFFERS</span><h2>Choose your next move.</h2></div></div>{data.offers.map((offer) => <div className="app-row" key={offer.id}><div><strong>{offer.lender.name}</strong><span>{Number(offer.annualRate).toFixed(2)}% · EMI {money(offer.emi)} · fee {Number(offer.processingFeePct).toFixed(2)}%</span></div><span>{money(offer.totalPayable)}</span><button className="small-button" onClick={async () => { await loans.selectOffer(id, offer.id); const r = await loans.application(id); setData(r.application) }}>{data.selectedOfferId === offer.id ? 'Selected ✓' : 'Select'}</button></div>)}</section></div></> }
+
+function ProfilePage() { const [form, setForm] = useState(() => JSON.parse(localStorage.getItem('loancompare_user') || '{}')); return <section className="dash-card profile-page"><div className="dash-card-head"><div><span>ACCOUNT</span><h2>Profile & preferences</h2></div></div><form onSubmit={async e => { e.preventDefault(); const result = await fetch('/api/profile', { method: 'PUT', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('loancompare_token')}` }, body: JSON.stringify(form) }).then(r => r.json()); if (!result.error) { localStorage.setItem('loancompare_user', JSON.stringify(result.user)); setForm(result.user) } }}><label>Full name<input value={form.fullName || ''} onChange={e => setForm({ ...form, fullName: e.target.value })}/></label><label>Phone<input value={form.phone || ''} onChange={e => setForm({ ...form, phone: e.target.value })}/></label><label>Credit score<input type="number" min="300" max="900" value={form.creditScore || ''} onChange={e => setForm({ ...form, creditScore: Number(e.target.value) })}/></label><button className="primary-button">Save profile</button></form></section> }
+
+function AdminPage() { const [data, setData] = useState(null); useEffect(() => { fetch('/api/admin/overview', { headers: { Authorization: `Bearer ${localStorage.getItem('loancompare_token')}` } }).then(r => r.json()).then(setData) }, []); return <><div className="dashboard-head"><div><span className="section-index">OPERATIONS</span><h1>Admin console</h1><p>Product and application health at a glance.</p></div></div>{data?.metrics && <div className="dashboard-metrics"><article><span>Users</span><strong>{data.metrics.users}</strong></article><article><span>Applications</span><strong>{data.metrics.applications}</strong></article><article><span>Active lenders</span><strong>{data.metrics.activeLenders}</strong></article></div>}<section className="dash-card"><div className="dash-card-head"><div><span>RECENT</span><h2>Latest applications</h2></div></div>{data?.recentApplications?.map(a => <div className="app-row" key={a.id}><div><strong>{a.user.fullName}</strong><span>{a.user.email} · {money(a.amount)}</span></div><span>{a.status}</span><b>{a.offers.length} offers</b></div>)}</section></> }
+
+function SimplePage({ title, text }) { return <main className="simple-page"><span className="section-index">LOANCOMPARE</span><h1>{title}</h1><p>{text}</p><Link className="primary-button" to="/compare">Start comparing →</Link></main> }
+
+export default function App() { return <BrowserRouter><Routes><Route element={<AppShell />}><Route index element={<HomePage />} /><Route path="compare" element={<ComparePage />} /><Route path="login" element={<AuthPage mode="login" />} /><Route path="register" element={<AuthPage mode="register" />} /><Route path="how-it-works" element={<SimplePage title="From scenario to application." text="Compare first, save an application, select an offer and keep the workflow in one place." />} /><Route element={<RequireAuth />}><Route path="dashboard" element={<DashboardLayout />}><Route index element={<DashboardHome />} /><Route path="applications" element={<ApplicationsPage />} /><Route path="applications/:id" element={<ApplicationDetail />} /><Route path="profile" element={<ProfilePage />} /><Route path="admin" element={<AdminPage />} /></Route></Route></Route><Route path="*" element={<Navigate to="/" replace />} /></Routes></BrowserRouter> }
