@@ -1,0 +1,1 @@
+Ready for integration testing after PR merge. The stack is a prototype; live lender/bureau production integrations remain future work.
