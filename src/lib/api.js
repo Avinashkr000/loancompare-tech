@@ -1,4 +1,4 @@
-const API_BASE = import.meta.env.VITE_API_URL || '/api'
+const API_BASE = import.meta.env.VITE_API_URL || '/api/v1'
 
 export async function api(path, options = {}) {
   const token = localStorage.getItem('loancompare_token')
