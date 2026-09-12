@@ -1,0 +1,1 @@
+This implementation branch was started from the post-v2 frontend baseline. Before release, resolve any concurrent main-branch changes through a normal pull-request merge/rebase.
